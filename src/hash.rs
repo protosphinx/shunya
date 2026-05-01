@@ -1,54 +1,37 @@
-//! Toy hash function for Merkle trees and Fiat-Shamir.
+//! Hash interface for Merkle trees and Fiat-Shamir.
 //!
-//! v0.3 uses a deliberately-simple hash: an FNV-1a accumulator chained
-//! through a few rotation-and-multiply rounds. It is *not* cryptographically
-//! secure. Real hashes (BLAKE3 for off-chain, Poseidon or Rescue for
-//! recursion-friendly) land in v0.5 alongside the lookup arguments.
+//! v0.3 shipped a deliberately toy FNV-1a mixer; v0.7 swaps the
+//! implementation to SHA-256 (truncated to 64 bits) so Merkle openings and
+//! transcript challenges become cryptographically meaningful.
 //!
-//! What this module *is* good for: validating the protocol structure of
-//! Merkle commitments and FRI without pulling in a hash dependency. Every
-//! consumer treats hash output as opaque `u64`, so swapping in a real hash
-//! later is a one-file change.
+//! The output type stays `u64` - downstream `merkle.rs`, `transcript.rs`,
+//! and `fri.rs` see no API change. Truncating SHA-256 to 64 bits gives
+//! 64-bit collision resistance, which is enough for the v0.7 demonstration.
+//! v0.8 widens hash output to 32 bytes for full 128-bit collision
+//! resistance (the production setting).
 
-const FNV_PRIME: u64 = 0x0000_0100_0000_01B3;
-const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
+use crate::sha256::sha256_u64;
 
-fn absorb_byte(state: u64, b: u8) -> u64 {
-    let s = state ^ (b as u64);
-    s.wrapping_mul(FNV_PRIME)
-}
+const TAG_ONE: u8 = 0xA1;
+const TAG_PAIR: u8 = 0xB2;
 
-fn finalize(mut s: u64) -> u64 {
-    for _ in 0..3 {
-        s = s.wrapping_mul(FNV_PRIME);
-        s ^= s.rotate_left(17);
-    }
-    s
-}
-
-/// Hash a single 64-bit value.
+/// Hash a single 64-bit value via SHA-256, domain-separated from
+/// [`hash_pair`].
 pub fn hash_one(x: u64) -> u64 {
-    let mut s = FNV_OFFSET;
-    for b in x.to_le_bytes() {
-        s = absorb_byte(s, b);
-    }
-    // Domain separation tag for unary inputs.
-    s = absorb_byte(s, 0xA1);
-    finalize(s)
+    let mut buf = [0u8; 9];
+    buf[0] = TAG_ONE;
+    buf[1..9].copy_from_slice(&x.to_le_bytes());
+    sha256_u64(&buf)
 }
 
-/// Hash a pair of 64-bit values, in order. `hash_pair(a, b) != hash_pair(b, a)`.
+/// Hash a pair of 64-bit values via SHA-256.
+/// `hash_pair(a, b) != hash_pair(b, a)`.
 pub fn hash_pair(left: u64, right: u64) -> u64 {
-    let mut s = FNV_OFFSET;
-    for b in left.to_le_bytes() {
-        s = absorb_byte(s, b);
-    }
-    // Domain separation between left and right halves.
-    s = absorb_byte(s, 0xB2);
-    for b in right.to_le_bytes() {
-        s = absorb_byte(s, b);
-    }
-    finalize(s)
+    let mut buf = [0u8; 17];
+    buf[0] = TAG_PAIR;
+    buf[1..9].copy_from_slice(&left.to_le_bytes());
+    buf[9..17].copy_from_slice(&right.to_le_bytes());
+    sha256_u64(&buf)
 }
 
 #[cfg(test)]

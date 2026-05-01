@@ -61,25 +61,37 @@ Higher-level intent than `README.md`. Sequenced milestones to a working PLONK-st
 - Tests: low-degree poly accepted; random evals rejected at n=16 and n=32;
   constant function accepted; almost-low-degree-with-one-spike rejected
 
-## v0.7 - real hash + recursion-friendly transcript
+## v0.7 - SHA-256 hand-roll ✦ **shipped**
 
-- Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
-- Domain-separated transcript with rolled-out absorb/squeeze API
+- `sha256(input: &[u8]) -> [u8; 32]` per FIPS 180-4 §6.2
+- Validated against the canonical test vectors: empty string, "abc",
+  56-byte two-block FIPS-B, repeated 'a', avalanche criterion
+- `sha256_u64` truncates to 8 bytes for the existing u64-shaped Merkle
+  and transcript machinery
+- `hash::hash_one` and `hash::hash_pair` now wrap SHA-256 with byte tags
+  for domain separation; all existing tests still pass
 
-## v0.8 - KZG variant
+## v0.8 - widened hash output
+
+- Lift Merkle and transcript from `u64` to `[u8; 32]` for full 128-bit
+  collision resistance
+- BLAKE3 alternative for performance (BLAKE3 ~10x SHA-256 throughput)
+- Recursion-friendly Poseidon variant for in-circuit Fiat-Shamir
+
+## v0.9 - KZG variant
 
 - BLS12-381 scalar + base field (importing a curve crate is acceptable
   here; `halo2curves` or hand-rolled if energy permits)
 - Pairing, KZG commit / open / verify
 
-## v0.9 - PLONK arithmetization
+## v0.10 - PLONK arithmetization
 
 - Constraint system: gate equations, copy constraints, permutation argument
 - Witness assignment
 - Round-by-round prover and verifier
 - One end-to-end demo: prove knowledge of `x` such that `x^3 + x + 5 = y` for public `y`
 
-## v0.7 - lookup + custom gates
+## v0.11 - lookup + custom gates
 
 - LogUp lookup argument
 - Custom gate API (degree-bounded multivariate polynomial constraints)

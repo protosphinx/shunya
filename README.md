@@ -23,8 +23,9 @@ The path to a working proof is paved. We walk it once, deliberately:
 | 0.4 | FRI folding step (polynomial identity validated at n=4, 8, 16) | **shipped** |
 | 0.5 | Full FRI prover/verifier with Merkle commitments + multi-query phase | **shipped** |
 | 0.6 | Eval-based FRI API + adversarial soundness tests (random evals rejected) | **shipped** |
-| 0.7 | Real hash (BLAKE3 / Poseidon); recursion-friendly transcript | next |
-| 0.8 | KZG variant over BLS12-381 | |
+| 0.7 | Hand-rolled SHA-256 (FIPS 180-4) backing Merkle and transcript | **shipped** |
+| 0.8 | Widened 32-byte hash output for 128-bit collision resistance | next |
+| 0.9 | KZG variant over BLS12-381 | |
 | 0.6 | PLONK arithmetization, copy constraints | |
 | 0.7 | Custom gates, lookup arguments (LogUp) | |
 | 0.8 | Halo2-style accumulation + recursion | |

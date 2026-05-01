@@ -17,6 +17,7 @@ pub mod hash;
 pub mod merkle;
 pub mod multilinear;
 pub mod poly;
+pub mod sha256;
 pub mod sumcheck;
 pub mod transcript;
 
