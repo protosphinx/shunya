@@ -18,11 +18,13 @@ The path to a working proof is paved. We walk it once, deliberately:
 |-----|-------|--------|
 | 0.0 | Goldilocks prime field - add/sub/mul/neg/pow/inv | **shipped** |
 | 0.1 | Fast reduction + univariate polynomials + radix-2 NTT | **shipped** |
-| 0.2 | Multilinear polynomials + sumcheck | next |
-| 0.3 | KZG commitment over BLS12-381 | |
-| 0.4 | PLONK arithmetization, copy constraints | |
-| 0.5 | Custom gates, lookup arguments (LogUp) | |
-| 0.6 | Halo2-style accumulation + recursion | |
+| 0.2 | Multilinear polynomials + sumcheck + toy Fiat-Shamir | **shipped** |
+| 0.3 | Toy hash + Merkle tree commitments over Goldilocks | **shipped** |
+| 0.4 | FRI low-degree test on top of the Merkle layer | next |
+| 0.5 | Real hash (BLAKE3 / Poseidon); KZG variant over BLS12-381 | |
+| 0.6 | PLONK arithmetization, copy constraints | |
+| 0.7 | Custom gates, lookup arguments (LogUp) | |
+| 0.8 | Halo2-style accumulation + recursion | |
 
 ## Why Goldilocks first
 

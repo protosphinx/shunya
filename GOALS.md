@@ -22,27 +22,45 @@ Higher-level intent than `README.md`. Sequenced milestones to a working PLONK-st
 - Sumcheck protocol (interactive + Fiat–Shamir transcript)
 - Used later as the engine for both lookup arguments and IVC
 
-## v0.3 - KZG over BLS12-381
+## v0.3 - Merkle tree commitments ✦ **shipped**
 
-- BLS12-381 scalar + base field (importing a curve crate is acceptable here; `halo2curves` or hand-rolled if energy permits)
-- Pairing
-- Trusted-setup serialization
-- KZG commit / open / verify
+- Pivoted from KZG to FRI/STARK substrate (Goldilocks-native, no pairings)
+- `hash::{hash_one, hash_pair}`: toy FNV+rotation hash (cryptographically not
+  secure; v0.5 swaps in a real hash). Domain-separated for unary vs pair.
+- `MerkleTree::new` over a power-of-two Goldilocks vector; `root`, `open(idx)`
+- `merkle_verify(root, idx, value, opening)`
+- Tests: every leaf opens-and-verifies in 16-leaf tree, tampered leaf
+  rejected, tampered sibling rejected, tampered root rejected, wrong index
+  rejected, single-leaf trivial root, opening size = log2(n)
 
-## v0.4 - PLONK arithmetization
+## v0.4 - FRI low-degree test
+
+- Build the FRI folding round-by-round on top of the Merkle layer
+- Prover: commit to `f`, fold to `f'` of half degree, repeat to constant
+- Verifier: query random points, check consistency of folded values
+- One end-to-end demo: prove a polynomial has degree below the bound
+
+## v0.5 - real hash + KZG variant
+
+- Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
+- Optional KZG track: BLS12-381 scalar + base field (importing a curve crate
+  is acceptable here; `halo2curves` or hand-rolled if energy permits),
+  pairing, KZG commit / open / verify
+
+## v0.6 - PLONK arithmetization
 
 - Constraint system: gate equations, copy constraints, permutation argument
 - Witness assignment
 - Round-by-round prover and verifier
 - One end-to-end demo: prove knowledge of `x` such that `x^3 + x + 5 = y` for public `y`
 
-## v0.5 - lookup + custom gates
+## v0.7 - lookup + custom gates
 
 - LogUp lookup argument
 - Custom gate API (degree-bounded multivariate polynomial constraints)
 - Range checks via lookup
 
-## v0.6 - recursion
+## v0.8 - recursion
 
 - Cycle of curves (Pasta-style: Pallas + Vesta)
 - Halo2-style accumulation scheme

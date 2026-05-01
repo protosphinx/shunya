@@ -12,12 +12,15 @@
 //! v0 ships the field arithmetic substrate. Everything else is built on top.
 
 pub mod field;
+pub mod hash;
+pub mod merkle;
 pub mod multilinear;
 pub mod poly;
 pub mod sumcheck;
 pub mod transcript;
 
 pub use field::{Field, Goldilocks};
+pub use merkle::{merkle_verify, MerkleOpening, MerkleTree};
 pub use multilinear::MultilinearPoly;
 pub use poly::{intt, ntt, Polynomial};
 pub use sumcheck::{sumcheck_prove, sumcheck_verify, SumcheckProof};
