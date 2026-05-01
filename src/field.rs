@@ -1,9 +1,9 @@
 //! Prime field arithmetic.
 //!
 //! v0 implements the Goldilocks field, `p = 2^64 - 2^32 + 1`. Chosen for its
-//! NTT-friendliness — the multiplicative group has order
+//! NTT-friendliness - the multiplicative group has order
 //! `2^32 · 3 · 5 · 17 · 257 · 65537`, so it admits FFTs of every power-of-two
-//! length up to 2^32 — and for cheap reduction. Used by Plonky2, Starks, and
+//! length up to 2^32 - and for cheap reduction. Used by Plonky2, Starks, and
 //! most modern small-field SNARK stacks.
 //!
 //! v0.1 ships the fast Goldilocks reduction (decompose product into limbs,

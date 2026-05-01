@@ -4,7 +4,7 @@
 //! polynomial multiplication via pointwise mul on evaluations, fast inversion
 //! of Vandermonde-like systems, batch evaluation at a coset. Once you have
 //! a primitive `n`-th root of unity `ω` with `n` a power of two, the FFT
-//! algorithm transports verbatim — the only difference from the complex
+//! algorithm transports verbatim - the only difference from the complex
 //! case is that arithmetic happens mod `p`.
 //!
 //! Goldilocks admits NTTs up to size `2^32` because the multiplicative group
@@ -97,7 +97,7 @@ pub fn intt(coeffs: &mut [Goldilocks]) {
     butterfly(coeffs, true);
     let n_inv = Goldilocks::new(coeffs.len() as u64)
         .inv()
-        .expect("NTT size must be coprime to p — it is, since size is a power of 2 ≤ 2^32");
+        .expect("NTT size must be coprime to p - it is, since size is a power of 2 ≤ 2^32");
     for c in coeffs.iter_mut() {
         *c = *c * n_inv;
     }
