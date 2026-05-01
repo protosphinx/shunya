@@ -33,14 +33,21 @@ Higher-level intent than `README.md`. Sequenced milestones to a working PLONK-st
   rejected, tampered sibling rejected, tampered root rejected, wrong index
   rejected, single-leaf trivial root, opening size = log2(n)
 
-## v0.4 - FRI low-degree test
+## v0.4 - FRI folding step ✦ **shipped**
 
-- Build the FRI folding round-by-round on top of the Merkle layer
-- Prover: commit to `f`, fold to `f'` of half degree, repeat to constant
-- Verifier: query random points, check consistency of folded values
+- `fri_fold(evals, alpha, omega)` performs one round of FRI folding
+- Polynomial identity validated against `p_even(y) + alpha · p_odd(y)`
+  at n = 4, 8, 16; iterated fold collapses a degree-1 poly to a constant;
+  alpha = 0 recovers the even part
+
+## v0.5 - full FRI prover/verifier
+
+- Build the FRI prover: round-by-round commit-fold loop with Merkle commitments
+- Verifier: query random points and check consistency at every round
+- Sibling-aware Merkle openings between consecutive rounds
 - One end-to-end demo: prove a polynomial has degree below the bound
 
-## v0.5 - real hash + KZG variant
+## v0.6 - real hash + KZG variant
 
 - Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
 - Optional KZG track: BLS12-381 scalar + base field (importing a curve crate
