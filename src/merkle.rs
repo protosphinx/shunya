@@ -83,7 +83,7 @@ impl MerkleTree {
         let mut layer_len = self.n_leaves;
         let mut i = idx;
         while layer_len > 1 {
-            let sibling_idx = if i % 2 == 0 { i + 1 } else { i - 1 };
+            let sibling_idx = if i.is_multiple_of(2) { i + 1 } else { i - 1 };
             siblings.push(self.nodes[layer_start + sibling_idx]);
             layer_start += layer_len;
             layer_len /= 2;
@@ -109,7 +109,7 @@ pub fn merkle_verify(
     let mut current = hash_one(value.raw());
     let mut i = idx;
     for sibling in &opening.siblings {
-        current = if i % 2 == 0 {
+        current = if i.is_multiple_of(2) {
             hash_pair(current, *sibling)
         } else {
             hash_pair(*sibling, current)
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn tampered_leaf_value_is_rejected() {
-        let values: Vec<_> = (0..8).map(|i| g(i)).collect();
+        let values: Vec<_> = (0..8).map(g).collect();
         let tree = MerkleTree::new(&values);
         let root = tree.root();
         let opening = tree.open(3);
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn tampered_sibling_is_rejected() {
-        let values: Vec<_> = (0..8).map(|i| g(i)).collect();
+        let values: Vec<_> = (0..8).map(g).collect();
         let tree = MerkleTree::new(&values);
         let root = tree.root();
         let mut opening = tree.open(2);
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn tampered_root_is_rejected() {
-        let values: Vec<_> = (0..4).map(|i| g(i)).collect();
+        let values: Vec<_> = (0..4).map(g).collect();
         let tree = MerkleTree::new(&values);
         let root = tree.root();
         let opening = tree.open(0);

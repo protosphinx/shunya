@@ -99,7 +99,7 @@ pub fn intt(coeffs: &mut [Goldilocks]) {
         .inv()
         .expect("NTT size must be coprime to p - it is, since size is a power of 2 ≤ 2^32");
     for c in coeffs.iter_mut() {
-        *c = *c * n_inv;
+        *c *= n_inv;
     }
 }
 
@@ -140,7 +140,7 @@ fn butterfly(coeffs: &mut [Goldilocks], inverse: bool) {
                 let v = coeffs[chunk + j + half] * w;
                 coeffs[chunk + j] = u + v;
                 coeffs[chunk + j + half] = u - v;
-                w = w * omega_step;
+                w *= omega_step;
             }
             chunk += len;
         }
@@ -221,7 +221,7 @@ mod tests {
         ntt(&mut ae);
         ntt(&mut be);
         for i in 0..n {
-            ae[i] = ae[i] * be[i];
+            ae[i] *= be[i];
         }
         intt(&mut ae);
 
@@ -229,8 +229,8 @@ mod tests {
             assert_eq!(ae[i], *c, "coefficient {} mismatch", i);
         }
         // Any extra slots are zero.
-        for i in expected.coeffs.len()..n {
-            assert_eq!(ae[i], Goldilocks::ZERO);
+        for v in &ae[expected.coeffs.len()..n] {
+            assert_eq!(*v, Goldilocks::ZERO);
         }
     }
 
@@ -274,7 +274,7 @@ mod tests {
         ntt(&mut ae);
         ntt(&mut be);
         for i in 0..n {
-            ae[i] = ae[i] * be[i];
+            ae[i] *= be[i];
         }
         intt(&mut ae);
 

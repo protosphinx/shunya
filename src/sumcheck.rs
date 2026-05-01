@@ -61,8 +61,8 @@ pub fn sumcheck_prove(
         let mut at_0 = Goldilocks::ZERO;
         let mut at_1 = Goldilocks::ZERO;
         for k in 0..half {
-            at_0 = at_0 + current[2 * k];
-            at_1 = at_1 + current[2 * k + 1];
+            at_0 += current[2 * k];
+            at_1 += current[2 * k + 1];
         }
         let g = RoundPoly { at_0, at_1 };
 
@@ -174,7 +174,7 @@ mod tests {
         // Flip the last round's at_1 - first-round consistency still holds,
         // but the chain breaks at the last step.
         let last = proof.round_polys.len() - 1;
-        proof.round_polys[last].at_1 = proof.round_polys[last].at_1 + g(1);
+        proof.round_polys[last].at_1 += g(1);
 
         let mut tv = Transcript::new(b"test-tamper");
         // Verifier follows the protocol and reconstructs an evaluation point.

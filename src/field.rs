@@ -164,9 +164,9 @@ impl Field for Goldilocks {
         let mut base = self;
         while exp > 0 {
             if exp & 1 == 1 {
-                acc = acc * base;
+                acc *= base;
             }
-            base = base * base;
+            base *= base;
             exp >>= 1;
         }
         acc
@@ -224,7 +224,7 @@ mod tests {
         let a = Goldilocks::new(3);
         let mut acc = Goldilocks::ONE;
         for _ in 0..17 {
-            acc = acc * a;
+            acc *= a;
         }
         assert_eq!(a.pow(17), acc);
     }

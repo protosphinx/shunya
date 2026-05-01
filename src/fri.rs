@@ -51,11 +51,19 @@ use crate::field::{Field, Goldilocks};
 
 /// One FRI folding round.
 ///
-/// `evals` must contain `n` evaluations of a polynomial on the domain
-/// `{ omega^0, omega^1, ..., omega^(n-1) }` in natural order, where `omega`
-/// is a primitive `n`-th root of unity. `n` must be at least 2 and a power
-/// of two. Returns the `n / 2` evaluations of the folded polynomial on the
-/// squared domain.
+/// **Input ordering is load-bearing.** `evals[i]` must be the value of the
+/// polynomial at `omega^i` for `i` in `0..n`, in natural index order. The
+/// pairing `(evals[i], evals[i + n/2])` is then exactly `(p(x), p(-x))`
+/// because `omega^(n/2) = -1`. If you produced the evaluations via
+/// [`crate::ntt`] over `n` coefficients, you are already in this order.
+/// If you produced them by some other means (e.g. bit-reversed output),
+/// reorder before calling.
+///
+/// `evals` must contain `n` evaluations on `{ omega^0, omega^1, ...,
+/// omega^(n-1) }`, where `omega` is a primitive `n`-th root of unity.
+/// `n` must be at least 2 and a power of two. Returns the `n / 2`
+/// evaluations of the folded polynomial on the squared domain
+/// `{ omega^0, omega^2, omega^4, ..., omega^(n-2) }`.
 pub fn fri_fold(
     evals: &[Goldilocks],
     alpha: Goldilocks,
@@ -80,7 +88,7 @@ pub fn fri_fold(
         let even = (f_pos + f_neg) * two_inv;
         let odd = (f_pos - f_neg) * two_inv * x_inv;
         out.push(even + alpha * odd);
-        x = x * omega;
+        x *= omega;
     }
     out
 }
