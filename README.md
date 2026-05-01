@@ -21,8 +21,9 @@ The path to a working proof is paved. We walk it once, deliberately:
 | 0.2 | Multilinear polynomials + sumcheck + toy Fiat-Shamir | **shipped** |
 | 0.3 | Toy hash + Merkle tree commitments over Goldilocks | **shipped** |
 | 0.4 | FRI folding step (polynomial identity validated at n=4, 8, 16) | **shipped** |
-| 0.5 | Full FRI prover/verifier (Merkle commitments + query phase) | next |
-| 0.6 | Real hash (BLAKE3 / Poseidon); KZG variant over BLS12-381 | |
+| 0.5 | Full FRI prover/verifier with Merkle commitments + multi-query phase | **shipped** |
+| 0.6 | Adversarial-prover soundness tests; real hash (BLAKE3 / Poseidon) | next |
+| 0.7 | KZG variant over BLS12-381 | |
 | 0.6 | PLONK arithmetization, copy constraints | |
 | 0.7 | Custom gates, lookup arguments (LogUp) | |
 | 0.8 | Halo2-style accumulation + recursion | |

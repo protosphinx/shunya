@@ -40,14 +40,25 @@ Higher-level intent than `README.md`. Sequenced milestones to a working PLONK-st
   at n = 4, 8, 16; iterated fold collapses a degree-1 poly to a constant;
   alpha = 0 recovers the even part
 
-## v0.5 - full FRI prover/verifier
+## v0.5 - full FRI prover/verifier ✦ **shipped**
 
-- Build the FRI prover: round-by-round commit-fold loop with Merkle commitments
-- Verifier: query random points and check consistency at every round
-- Sibling-aware Merkle openings between consecutive rounds
-- One end-to-end demo: prove a polynomial has degree below the bound
+- `fri_prove(coeffs, n_queries, transcript)`: 2x blowup, fold all the way
+  to a single field element, layer-by-layer Merkle commitments, transcript
+  drives both fold challenges and query positions
+- `fri_verify(d, n_queries, proof, transcript)`: re-derive challenges,
+  check Merkle openings + folding identity at each layer for each query,
+  match the final folded value
+- Tests: round-trip at d = 1, 4, 16; tampered Merkle opening rejected;
+  tampered layer value rejected; tampered final value rejected; mismatched
+  query count rejected
 
-## v0.6 - real hash + KZG variant
+## v0.6 - adversarial soundness + real hash
+
+- Adversarial-prover tests: construct evaluations that are not a low-degree
+  polynomial; verifier rejects with high probability over the queries
+- Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
+
+## v0.7 - KZG variant
 
 - Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
 - Optional KZG track: BLS12-381 scalar + base field (importing a curve crate

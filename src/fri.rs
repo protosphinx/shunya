@@ -48,6 +48,9 @@
 //! ```
 
 use crate::field::{Field, Goldilocks};
+use crate::merkle::{merkle_verify, MerkleOpening, MerkleTree};
+use crate::poly::{ntt, TWO_ADICITY, TWO_ADIC_GENERATOR};
+use crate::transcript::Transcript;
 
 /// One FRI folding round.
 ///
@@ -93,10 +96,206 @@ pub fn fri_fold(
     out
 }
 
+/// One layer's worth of query evidence: the value at the queried point and
+/// at its negation, plus Merkle openings for both.
+#[derive(Clone, Debug)]
+pub struct FriQueryLayer {
+    pub at_pos: Goldilocks,
+    pub at_neg: Goldilocks,
+    pub opening_pos: MerkleOpening,
+    pub opening_neg: MerkleOpening,
+}
+
+/// One full query: a chain of `FriQueryLayer`s, one per folding layer.
+#[derive(Clone, Debug)]
+pub struct FriQuery {
+    pub layers: Vec<FriQueryLayer>,
+}
+
+/// A FRI proof. The prover commits to layer evaluations via Merkle roots,
+/// folds all the way down to a single field element (`final_value`), and
+/// supplies one query chain per `n_queries` to the verifier.
+#[derive(Clone, Debug)]
+pub struct FriProof {
+    pub layer_roots: Vec<u64>,
+    pub final_value: Goldilocks,
+    pub queries: Vec<FriQuery>,
+}
+
+/// Build a FRI proof for a polynomial given by its `d` coefficients
+/// (degree `< d`). The prover internally evaluates on a size-`2d` domain
+/// (2x blowup), then folds `log2(2d)` times down to a single constant.
+///
+/// `d` must be a positive power of two. `n_queries` controls soundness.
+pub fn fri_prove(
+    poly_coeffs: &[Goldilocks],
+    n_queries: usize,
+    transcript: &mut Transcript,
+) -> FriProof {
+    let d = poly_coeffs.len();
+    assert!(
+        d.is_power_of_two() && d >= 1,
+        "FRI prover requires power-of-two coeff length >= 1, got {}",
+        d
+    );
+    let n = d * 2;
+
+    let mut current = poly_coeffs.to_vec();
+    current.resize(n, Goldilocks::ZERO);
+    ntt(&mut current);
+
+    let mut current_omega = TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
+
+    let mut layer_evals: Vec<Vec<Goldilocks>> = Vec::new();
+    let mut layer_trees: Vec<MerkleTree> = Vec::new();
+    let mut layer_roots: Vec<u64> = Vec::new();
+    let mut alphas: Vec<Goldilocks> = Vec::new();
+
+    while current.len() > 1 {
+        let tree = MerkleTree::new(&current);
+        let root = tree.root();
+        layer_roots.push(root);
+        transcript.append(Goldilocks::new(root));
+        let alpha = transcript.challenge();
+        alphas.push(alpha);
+        layer_evals.push(current.clone());
+        layer_trees.push(tree);
+
+        current = fri_fold(&current, alpha, current_omega);
+        current_omega *= current_omega;
+    }
+    let final_value = current[0];
+
+    let mut queries = Vec::with_capacity(n_queries);
+    for _ in 0..n_queries {
+        let q_seed = transcript.challenge().raw();
+        let q = (q_seed as usize) % (n / 2);
+
+        let mut layers = Vec::with_capacity(layer_trees.len());
+        let mut q_at = q;
+        for (layer_idx, evals) in layer_evals.iter().enumerate() {
+            let half = evals.len() / 2;
+            let pos_idx = q_at % half;
+            let neg_idx = pos_idx + half;
+            let at_pos = evals[pos_idx];
+            let at_neg = evals[neg_idx];
+            let opening_pos = layer_trees[layer_idx].open(pos_idx);
+            let opening_neg = layer_trees[layer_idx].open(neg_idx);
+            layers.push(FriQueryLayer {
+                at_pos,
+                at_neg,
+                opening_pos,
+                opening_neg,
+            });
+            q_at = pos_idx;
+        }
+        queries.push(FriQuery { layers });
+    }
+
+    FriProof {
+        layer_roots,
+        final_value,
+        queries,
+    }
+}
+
+/// Verify a FRI proof for a polynomial of degree `< d` (must match the
+/// prover's `coeffs.len()`). Returns `true` only if every Merkle opening
+/// checks, every folding-identity check holds, and the final folded value
+/// matches across all queries.
+pub fn fri_verify(
+    d: usize,
+    n_queries: usize,
+    proof: &FriProof,
+    transcript: &mut Transcript,
+) -> bool {
+    if !d.is_power_of_two() || d == 0 {
+        return false;
+    }
+    let n = d * 2;
+    let n_layers = n.trailing_zeros() as usize;
+    if proof.layer_roots.len() != n_layers || proof.queries.len() != n_queries {
+        return false;
+    }
+
+    let mut alphas: Vec<Goldilocks> = Vec::with_capacity(n_layers);
+    for &root in &proof.layer_roots {
+        transcript.append(Goldilocks::new(root));
+        alphas.push(transcript.challenge());
+    }
+
+    let two_inv = (Goldilocks::ONE + Goldilocks::ONE)
+        .inv()
+        .expect("2 is non-zero in Goldilocks");
+
+    for query in &proof.queries {
+        if query.layers.len() != n_layers {
+            return false;
+        }
+        let q_seed = transcript.challenge().raw();
+        let q = (q_seed as usize) % (n / 2);
+
+        let mut q_at = q;
+        let mut current_omega =
+            TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
+        let mut current_size = n;
+
+        for (layer_idx, layer) in query.layers.iter().enumerate() {
+            let half = current_size / 2;
+            let pos_idx = q_at % half;
+            let neg_idx = pos_idx + half;
+
+            if !merkle_verify(
+                proof.layer_roots[layer_idx],
+                pos_idx,
+                layer.at_pos,
+                &layer.opening_pos,
+            ) {
+                return false;
+            }
+            if !merkle_verify(
+                proof.layer_roots[layer_idx],
+                neg_idx,
+                layer.at_neg,
+                &layer.opening_neg,
+            ) {
+                return false;
+            }
+
+            let x = current_omega.pow(pos_idx as u64);
+            let x_inv = x.inv().expect("domain element is non-zero");
+            let even = (layer.at_pos + layer.at_neg) * two_inv;
+            let odd = (layer.at_pos - layer.at_neg) * two_inv * x_inv;
+            let expected = even + alphas[layer_idx] * odd;
+
+            if layer_idx + 1 < n_layers {
+                let next = &query.layers[layer_idx + 1];
+                let next_size = current_size / 2;
+                let next_half = next_size / 2;
+                let claimed = if pos_idx < next_half {
+                    next.at_pos
+                } else {
+                    next.at_neg
+                };
+                if claimed != expected {
+                    return false;
+                }
+            } else if proof.final_value != expected {
+                return false;
+            }
+
+            q_at = pos_idx;
+            current_omega *= current_omega;
+            current_size = half;
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::poly::{ntt, TWO_ADICITY, TWO_ADIC_GENERATOR};
 
     fn g(v: u64) -> Goldilocks {
         Goldilocks::new(v)
@@ -198,5 +397,91 @@ mod tests {
         let mut p_even_evals = vec![g(10), g(30)];
         ntt(&mut p_even_evals);
         assert_eq!(folded, p_even_evals);
+    }
+
+    // ---- Full FRI prover/verifier tests ----
+
+    #[test]
+    fn fri_proves_and_verifies_low_degree_polynomial() {
+        // Polynomial of degree < 4 (length 4), 2x blowup -> domain size 8.
+        let coeffs: Vec<_> = (0..4u64).map(|i| g(i * 7 + 3)).collect();
+        let mut tp = Transcript::new(b"fri-test");
+        let proof = fri_prove(&coeffs, 4, &mut tp);
+
+        let mut tv = Transcript::new(b"fri-test");
+        assert!(fri_verify(4, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_handles_d_equal_16() {
+        let coeffs: Vec<_> = (0..16u64).map(|i| g(i * i + 1)).collect();
+        let mut tp = Transcript::new(b"fri-16");
+        let proof = fri_prove(&coeffs, 4, &mut tp);
+        // n = 32, n_layers = log2(32) = 5
+        assert_eq!(proof.layer_roots.len(), 5);
+
+        let mut tv = Transcript::new(b"fri-16");
+        assert!(fri_verify(16, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_handles_d_equal_1_constant() {
+        // Constant polynomial: coeffs = [c]. n = 2.
+        let coeffs = vec![g(42)];
+        let mut tp = Transcript::new(b"fri-1");
+        let proof = fri_prove(&coeffs, 4, &mut tp);
+        assert_eq!(proof.layer_roots.len(), 1);
+
+        let mut tv = Transcript::new(b"fri-1");
+        assert!(fri_verify(1, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_rejects_tampered_merkle_opening() {
+        let coeffs: Vec<_> = (0..4u64).map(|i| g(i + 1)).collect();
+        let mut tp = Transcript::new(b"tamper-merkle");
+        let mut proof = fri_prove(&coeffs, 4, &mut tp);
+
+        proof.queries[0].layers[0].opening_pos.siblings[0] = proof.queries[0].layers[0]
+            .opening_pos
+            .siblings[0]
+            .wrapping_add(1);
+
+        let mut tv = Transcript::new(b"tamper-merkle");
+        assert!(!fri_verify(4, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_rejects_tampered_layer_value() {
+        let coeffs: Vec<_> = (0..4u64).map(|i| g(i + 5)).collect();
+        let mut tp = Transcript::new(b"tamper-value");
+        let mut proof = fri_prove(&coeffs, 4, &mut tp);
+
+        proof.queries[0].layers[0].at_pos = proof.queries[0].layers[0].at_pos + g(1);
+
+        let mut tv = Transcript::new(b"tamper-value");
+        assert!(!fri_verify(4, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_rejects_tampered_final_value() {
+        let coeffs: Vec<_> = (0..4u64).map(|i| g(i + 5)).collect();
+        let mut tp = Transcript::new(b"final-value");
+        let mut proof = fri_prove(&coeffs, 4, &mut tp);
+
+        proof.final_value = proof.final_value + g(1);
+
+        let mut tv = Transcript::new(b"final-value");
+        assert!(!fri_verify(4, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_rejects_wrong_param_lengths() {
+        let coeffs: Vec<_> = (0..4u64).map(|i| g(i)).collect();
+        let mut tp = Transcript::new(b"wrong-params");
+        let proof = fri_prove(&coeffs, 3, &mut tp);
+
+        let mut tv = Transcript::new(b"wrong-params");
+        assert!(!fri_verify(4, 4, &proof, &mut tv));
     }
 }
