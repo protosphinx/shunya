@@ -17,8 +17,8 @@ The path to a working proof is paved. We walk it once, deliberately:
 | v   | Layer | Status |
 |-----|-------|--------|
 | 0.0 | Goldilocks prime field — add/sub/mul/neg/pow/inv | **shipped** |
-| 0.1 | Univariate polynomials + radix-2 NTT | next |
-| 0.2 | Multilinear polynomials + sumcheck | |
+| 0.1 | Fast reduction + univariate polynomials + radix-2 NTT | **shipped** |
+| 0.2 | Multilinear polynomials + sumcheck | next |
 | 0.3 | KZG commitment over BLS12-381 | |
 | 0.4 | PLONK arithmetization, copy constraints | |
 | 0.5 | Custom gates, lookup arguments (LogUp) | |
@@ -28,7 +28,7 @@ The path to a working proof is paved. We walk it once, deliberately:
 
 `p = 2^64 - 2^32 + 1`. Three things make it the right starting field:
 
-1. **Cheap reduction.** `2^64 ≡ 2^32 − 1 (mod p)`, so a 128-bit product collapses to a few `u64` ops. (v0 punts on the fast path and uses a straight `% P`; v0.1 lands the limb decomposition.)
+1. **Cheap reduction.** `2^64 ≡ 2^32 − 1 (mod p)`, so a 128-bit product collapses to a few `u64` ops. v0.1 lands the limb decomposition; cross-tested against `% P` for ten thousand pseudo-random products.
 2. **NTT-friendliness.** The multiplicative group has order `2^32 · 3 · 5 · 17 · 257 · 65537`. Power-of-two FFTs of every size up to 2^32 are available — exactly what a polynomial commitment scheme wants.
 3. **Small-field arithmetic.** Fits in a single `u64`; vectorizes well; lets us defer the bignum machinery until pairings show up at v0.3.
 
@@ -38,8 +38,10 @@ Used in production by Plonky2, Starks, RISC Zero — well-trodden ground.
 
 ```toml
 [dependencies]
-shunya = "0.0.1"
+shunya = "0.1"
 ```
+
+Field arithmetic:
 
 ```rust
 use shunya::Goldilocks;
@@ -48,9 +50,28 @@ use shunya::field::Field;
 let a = Goldilocks::new(7);
 let b = Goldilocks::new(13);
 assert_eq!(a * b, Goldilocks::new(91));
+assert_eq!(a * a.inv().unwrap(), Goldilocks::ONE);
+```
 
-let inv = a.inv().unwrap();
-assert_eq!(a * inv, Goldilocks::ONE);
+Polynomial multiplication via NTT:
+
+```rust
+use shunya::{intt, ntt, Goldilocks};
+
+// a = 1 + 2x + 3x²;  b = 4 + 5x.  Pad both sides to NTT size 8.
+let mut a = vec![Goldilocks::new(1), Goldilocks::new(2), Goldilocks::new(3),
+                 Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO,
+                 Goldilocks::ZERO, Goldilocks::ZERO];
+let mut b = vec![Goldilocks::new(4), Goldilocks::new(5),
+                 Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO,
+                 Goldilocks::ZERO, Goldilocks::ZERO, Goldilocks::ZERO];
+
+ntt(&mut a);
+ntt(&mut b);
+for i in 0..8 { a[i] = a[i] * b[i]; }
+intt(&mut a);
+
+// a = [4, 13, 22, 15, 0, 0, 0, 0]  ←  4 + 13x + 22x² + 15x³
 ```
 
 ## License

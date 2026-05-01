@@ -12,5 +12,7 @@
 //! v0 ships the field arithmetic substrate. Everything else is built on top.
 
 pub mod field;
+pub mod poly;
 
 pub use field::{Field, Goldilocks};
+pub use poly::{intt, ntt, Polynomial};

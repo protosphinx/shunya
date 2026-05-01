@@ -6,9 +6,9 @@
 //! length up to 2^32 — and for cheap reduction. Used by Plonky2, Starks, and
 //! most modern small-field SNARK stacks.
 //!
-//! v0 uses a straightforward `% P` reduction in `Mul`. The fast Goldilocks
-//! reduction (decompose product into limbs, exploit `2^64 ≡ 2^32 - 1 (mod p)`)
-//! is a v1 optimization tracked in `GOALS.md`.
+//! v0.1 ships the fast Goldilocks reduction (decompose product into limbs,
+//! exploit `2^64 ≡ 2^32 - 1 (mod p)`). Cross-tested against the naive
+//! `% P` path for ten thousand pseudo-random products.
 
 use std::fmt;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -38,6 +38,10 @@ pub trait Field:
 /// Goldilocks prime: `p = 2^64 - 2^32 + 1`.
 pub const P: u64 = 0xFFFF_FFFF_0000_0001;
 
+/// `2^32 - 1`. Equal to `2^64 mod p`, which makes it the workhorse constant in
+/// the fast reduction.
+pub const EPSILON: u64 = 0xFFFF_FFFF;
+
 /// Element of the Goldilocks field, stored canonically in `[0, P)`.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Goldilocks(u64);
@@ -49,6 +53,40 @@ impl Goldilocks {
 
     pub const fn raw(self) -> u64 {
         self.0
+    }
+
+    /// Reduce a 128-bit product modulo `P`.
+    ///
+    /// Decompose `x = x_lo + x_hi · 2^64` with `x_hi = x_hh · 2^32 + x_hl`.
+    /// Using `2^64 ≡ 2^32 - 1 (mod p)` and `2^96 ≡ -1 (mod p)`:
+    ///
+    /// ```text
+    /// x ≡ x_lo + x_hl · (2^32 - 1) - x_hh   (mod p)
+    /// ```
+    ///
+    /// Each subtraction-with-borrow is corrected by subtracting `EPSILON`,
+    /// since `+p ≡ -EPSILON (mod 2^64)`. One final `>= P` correction lands
+    /// the result in `[0, P)`.
+    pub fn reduce_u128(x: u128) -> Self {
+        let x_lo = x as u64;
+        let x_hi = (x >> 64) as u64;
+        let x_hh = x_hi >> 32;
+        let x_hl = x_hi & EPSILON;
+
+        let (t0, borrow) = x_lo.overflowing_sub(x_hh);
+        let t0 = if borrow { t0.wrapping_sub(EPSILON) } else { t0 };
+
+        // x_hl < 2^32 and EPSILON < 2^32, so the product fits in u64.
+        let t1 = x_hl.wrapping_mul(EPSILON);
+
+        let (t2, carry) = t0.overflowing_add(t1);
+        let t2 = if carry { t2.wrapping_add(EPSILON) } else { t2 };
+
+        if t2 >= P {
+            Self(t2 - P)
+        } else {
+            Self(t2)
+        }
     }
 }
 
@@ -97,8 +135,7 @@ impl Neg for Goldilocks {
 impl Mul for Goldilocks {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
-        let prod = (self.0 as u128) * (rhs.0 as u128);
-        Self((prod % (P as u128)) as u64)
+        Self::reduce_u128((self.0 as u128) * (rhs.0 as u128))
     }
 }
 
@@ -210,6 +247,40 @@ mod tests {
         for v in [1u64, 2, 3, 0xFEED_FACE, P - 1] {
             let a = Goldilocks::new(v);
             assert_eq!(a.pow(P), a);
+        }
+    }
+
+    #[test]
+    fn fast_reduction_matches_naive() {
+        // Pseudo-random LCG; cross-check fast `reduce_u128` against `% P`.
+        let mut s: u64 = 0xCAFE_BABE_DEAD_BEEF;
+        let next = |s: &mut u64| -> u64 {
+            *s = s
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            *s
+        };
+        for _ in 0..10_000 {
+            let a = next(&mut s) % P;
+            let b = next(&mut s) % P;
+            let prod = (a as u128) * (b as u128);
+            let fast = Goldilocks::reduce_u128(prod).raw();
+            let slow = (prod % P as u128) as u64;
+            assert_eq!(fast, slow, "mismatch a={} b={}", a, b);
+        }
+    }
+
+    #[test]
+    fn fast_reduction_handles_extremes() {
+        // Edge cases: zeros, ones, p-1, max u64.
+        let extremes = [0u64, 1, 2, P - 2, P - 1, u64::MAX % P];
+        for &a in &extremes {
+            for &b in &extremes {
+                let prod = (a as u128) * (b as u128);
+                let fast = Goldilocks::reduce_u128(prod).raw();
+                let slow = (prod % P as u128) as u64;
+                assert_eq!(fast, slow, "extreme mismatch a={} b={}", a, b);
+            }
         }
     }
 }

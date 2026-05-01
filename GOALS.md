@@ -8,13 +8,13 @@ Higher-level intent than `README.md`. Sequenced milestones to a working PLONK-st
 - `add`, `sub`, `neg`, `mul`, `pow`, `inv` (Fermat), `square`
 - Tests: closure under each op, distributivity, Fermat's little theorem
 
-## v0.1 — fast reduction + polynomials
+## v0.1 — fast reduction + polynomials ✦ **shipped**
 
-- Replace `% P` with the limb-decomposition reduction exploiting `2^64 ≡ 2^32 − 1 (mod p)`
-- Univariate polynomial type over `Goldilocks`
-- Radix-2 NTT (Cooley–Tukey) using a primitive `2^k`-th root of unity
-- Inverse NTT via the standard scaling trick
-- Bench: NTT of size 2^20 on a single thread
+- Plonky2-style fast Goldilocks reduction; cross-tested against `% P`
+- `Polynomial<F>` with Horner evaluation, naive multiplication
+- Radix-2 NTT and inverse NTT, in-place, iterative Cooley–Tukey
+- Validated two-adic generator: `ω^(2^32) = 1`, `ω^(2^31) = -1`
+- Tests: round-trip at sizes 2..2^10, NTT-based convolution matches naive at n = 8 and n = 64
 
 ## v0.2 — sumcheck + multilinear
 
