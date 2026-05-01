@@ -1,0 +1,19 @@
+[package]
+name = "shunya"
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+description = "A from-scratch zero-knowledge proving system."
+repository = "https://github.com/protosphinx/shunya"
+readme = "README.md"
+keywords = ["zk", "snark", "plonk", "cryptography"]
+categories = ["cryptography"]
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
