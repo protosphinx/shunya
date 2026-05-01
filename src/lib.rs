@@ -21,7 +21,10 @@ pub mod sumcheck;
 pub mod transcript;
 
 pub use field::{Field, Goldilocks};
-pub use fri::{fri_fold, fri_prove, fri_verify, FriProof, FriQuery, FriQueryLayer};
+pub use fri::{
+    fri_fold, fri_prove, fri_prove_evals, fri_verify, fri_verify_evals, FriProof, FriProofExt,
+    FriQuery, FriQueryLayer,
+};
 
 pub use merkle::{merkle_verify, MerkleOpening, MerkleTree};
 pub use multilinear::MultilinearPoly;

@@ -122,6 +122,16 @@ pub struct FriProof {
     pub queries: Vec<FriQuery>,
 }
 
+/// Extended FRI proof for the eval-based API. Folding stops at a
+/// configurable `final_layer_size` (>= 2); the verifier checks the final
+/// layer is constant.
+#[derive(Clone, Debug)]
+pub struct FriProofExt {
+    pub layer_roots: Vec<u64>,
+    pub final_layer: Vec<Goldilocks>,
+    pub queries: Vec<FriQuery>,
+}
+
 /// Build a FRI proof for a polynomial given by its `d` coefficients
 /// (degree `< d`). The prover internally evaluates on a size-`2d` domain
 /// (2x blowup), then folds `log2(2d)` times down to a single constant.
@@ -291,6 +301,190 @@ pub fn fri_verify(
     }
 
     true
+}
+
+/// Eval-based FRI prover: takes the polynomial's evaluations on the size-`n`
+/// initial domain directly, instead of coefficients. Folds until the layer
+/// size reaches `final_layer_size` (which must be `>= 2`).
+///
+/// This API is what makes a real *low-degree test*: the verifier can
+/// supply arbitrary evaluations, the prover honestly folds them, and the
+/// verifier rejects if the final layer is not constant. For evaluations
+/// of a low-degree polynomial, the final layer is constant by construction.
+/// For random or adversarial evaluations, it is constant only with
+/// negligible probability over the prover's challenge alphas.
+pub fn fri_prove_evals(
+    evals: Vec<Goldilocks>,
+    final_layer_size: usize,
+    n_queries: usize,
+    transcript: &mut Transcript,
+) -> FriProofExt {
+    let n = evals.len();
+    assert!(
+        n.is_power_of_two() && n >= 2 * final_layer_size,
+        "n={} must be power of two >= 2 * final_layer_size={}",
+        n,
+        final_layer_size
+    );
+    assert!(
+        final_layer_size.is_power_of_two() && final_layer_size >= 2,
+        "final_layer_size must be a power of two >= 2"
+    );
+
+    let mut current = evals;
+    let mut current_omega = TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
+
+    let mut layer_evals: Vec<Vec<Goldilocks>> = Vec::new();
+    let mut layer_trees: Vec<MerkleTree> = Vec::new();
+    let mut layer_roots: Vec<u64> = Vec::new();
+
+    while current.len() > final_layer_size {
+        let tree = MerkleTree::new(&current);
+        let root = tree.root();
+        layer_roots.push(root);
+        transcript.append(Goldilocks::new(root));
+        let alpha = transcript.challenge();
+        layer_evals.push(current.clone());
+        layer_trees.push(tree);
+
+        current = fri_fold(&current, alpha, current_omega);
+        current_omega *= current_omega;
+    }
+    let final_layer = current;
+
+    let mut queries = Vec::with_capacity(n_queries);
+    for _ in 0..n_queries {
+        let q_seed = transcript.challenge().raw();
+        let q = (q_seed as usize) % (n / 2);
+
+        let mut layers = Vec::with_capacity(layer_trees.len());
+        let mut q_at = q;
+        for (layer_idx, evals) in layer_evals.iter().enumerate() {
+            let half = evals.len() / 2;
+            let pos_idx = q_at % half;
+            let neg_idx = pos_idx + half;
+            layers.push(FriQueryLayer {
+                at_pos: evals[pos_idx],
+                at_neg: evals[neg_idx],
+                opening_pos: layer_trees[layer_idx].open(pos_idx),
+                opening_neg: layer_trees[layer_idx].open(neg_idx),
+            });
+            q_at = pos_idx;
+        }
+        queries.push(FriQuery { layers });
+    }
+
+    FriProofExt {
+        layer_roots,
+        final_layer,
+        queries,
+    }
+}
+
+/// Eval-based FRI verifier. Returns `true` only if every Merkle opening
+/// checks, every folding-identity check holds at every query, the
+/// expected fold from the last query layer matches a value in `final_layer`,
+/// and `final_layer` is constant (all values equal).
+pub fn fri_verify_evals(
+    n: usize,
+    final_layer_size: usize,
+    n_queries: usize,
+    proof: &FriProofExt,
+    transcript: &mut Transcript,
+) -> bool {
+    if !n.is_power_of_two() || n < 2 * final_layer_size {
+        return false;
+    }
+    if !final_layer_size.is_power_of_two() || final_layer_size < 2 {
+        return false;
+    }
+    let n_layers = n.trailing_zeros() as usize - final_layer_size.trailing_zeros() as usize;
+    if proof.layer_roots.len() != n_layers
+        || proof.final_layer.len() != final_layer_size
+        || proof.queries.len() != n_queries
+    {
+        return false;
+    }
+
+    let mut alphas: Vec<Goldilocks> = Vec::with_capacity(n_layers);
+    for &root in &proof.layer_roots {
+        transcript.append(Goldilocks::new(root));
+        alphas.push(transcript.challenge());
+    }
+
+    let two_inv = (Goldilocks::ONE + Goldilocks::ONE)
+        .inv()
+        .expect("2 is non-zero in Goldilocks");
+
+    for query in &proof.queries {
+        if query.layers.len() != n_layers {
+            return false;
+        }
+        let q_seed = transcript.challenge().raw();
+        let q = (q_seed as usize) % (n / 2);
+
+        let mut q_at = q;
+        let mut current_omega =
+            TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
+        let mut current_size = n;
+
+        for (layer_idx, layer) in query.layers.iter().enumerate() {
+            let half = current_size / 2;
+            let pos_idx = q_at % half;
+            let neg_idx = pos_idx + half;
+
+            if !merkle_verify(
+                proof.layer_roots[layer_idx],
+                pos_idx,
+                layer.at_pos,
+                &layer.opening_pos,
+            ) {
+                return false;
+            }
+            if !merkle_verify(
+                proof.layer_roots[layer_idx],
+                neg_idx,
+                layer.at_neg,
+                &layer.opening_neg,
+            ) {
+                return false;
+            }
+
+            let x = current_omega.pow(pos_idx as u64);
+            let x_inv = x.inv().expect("domain element is non-zero");
+            let even = (layer.at_pos + layer.at_neg) * two_inv;
+            let odd = (layer.at_pos - layer.at_neg) * two_inv * x_inv;
+            let expected = even + alphas[layer_idx] * odd;
+
+            if layer_idx + 1 < n_layers {
+                let next = &query.layers[layer_idx + 1];
+                let next_size = current_size / 2;
+                let next_half = next_size / 2;
+                let claimed = if pos_idx < next_half {
+                    next.at_pos
+                } else {
+                    next.at_neg
+                };
+                if claimed != expected {
+                    return false;
+                }
+            } else {
+                // Last query layer's fold lands at position pos_idx in the
+                // final_layer. Check it matches.
+                if proof.final_layer[pos_idx] != expected {
+                    return false;
+                }
+            }
+
+            q_at = pos_idx;
+            current_omega *= current_omega;
+            current_size = half;
+        }
+    }
+
+    // The defining low-degree check: final layer must be constant.
+    let first = proof.final_layer[0];
+    proof.final_layer.iter().all(|v| *v == first)
 }
 
 #[cfg(test)]
@@ -483,5 +677,93 @@ mod tests {
 
         let mut tv = Transcript::new(b"wrong-params");
         assert!(!fri_verify(4, 4, &proof, &mut tv));
+    }
+
+    // ---- Eval-based FRI tests (v0.6) ----
+
+    /// Evaluate a polynomial of degree < d on the size-n domain via NTT.
+    fn evals_of_low_degree_poly(coeffs: Vec<Goldilocks>, n: usize) -> Vec<Goldilocks> {
+        assert!(coeffs.len() <= n);
+        let mut padded = coeffs;
+        padded.resize(n, Goldilocks::ZERO);
+        ntt(&mut padded);
+        padded
+    }
+
+    #[test]
+    fn fri_evals_accepts_low_degree_polynomial() {
+        // Polynomial of degree < 4, evaluated on size-16 domain (4x blowup).
+        let coeffs = vec![g(2), g(3), g(5), g(7)];
+        let n = 16;
+        let evals = evals_of_low_degree_poly(coeffs, n);
+
+        let mut tp = Transcript::new(b"v0.6-low-deg");
+        let proof = fri_prove_evals(evals, 2, 8, &mut tp);
+
+        let mut tv = Transcript::new(b"v0.6-low-deg");
+        assert!(fri_verify_evals(n, 2, 8, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_evals_rejects_random_evaluations() {
+        // Construct evaluations from a NON-low-degree function: random.
+        // With overwhelming probability over folding alphas, the final
+        // layer is not constant.
+        let n = 16;
+        let evals: Vec<_> = (0..n as u64)
+            .map(|i| g(i.wrapping_mul(0x9E37_79B9_7F4A_7C15)))
+            .collect();
+
+        let mut tp = Transcript::new(b"v0.6-random");
+        let proof = fri_prove_evals(evals, 2, 8, &mut tp);
+
+        let mut tv = Transcript::new(b"v0.6-random");
+        // Verifier should reject: either final layer is not constant, OR
+        // some intermediate query lands inconsistently.
+        assert!(!fri_verify_evals(n, 2, 8, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_evals_rejects_random_at_final_layer_size_4() {
+        let n = 32;
+        let evals: Vec<_> = (0..n as u64)
+            .map(|i| g(i.wrapping_mul(0xBF58_476D_1CE4_E5B9).wrapping_add(7)))
+            .collect();
+
+        let mut tp = Transcript::new(b"v0.6-random-32");
+        let proof = fri_prove_evals(evals, 4, 8, &mut tp);
+
+        let mut tv = Transcript::new(b"v0.6-random-32");
+        assert!(!fri_verify_evals(n, 4, 8, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_evals_accepts_constant_function() {
+        // A constant polynomial: every eval is the same.
+        let n = 8;
+        let evals = vec![g(42); n];
+
+        let mut tp = Transcript::new(b"v0.6-const");
+        let proof = fri_prove_evals(evals, 2, 4, &mut tp);
+
+        let mut tv = Transcript::new(b"v0.6-const");
+        assert!(fri_verify_evals(n, 2, 4, &proof, &mut tv));
+    }
+
+    #[test]
+    fn fri_evals_rejects_almost_low_degree_with_one_spike() {
+        // Take low-degree evals and tamper one entry. With high probability
+        // the verifier catches the inconsistency at one of its queries.
+        let coeffs = vec![g(11), g(13)];
+        let n = 16;
+        let mut evals = evals_of_low_degree_poly(coeffs, n);
+        // Inject a "spike" at one position - destroys low-degree structure.
+        evals[5] = evals[5] + g(99);
+
+        let mut tp = Transcript::new(b"v0.6-spike");
+        let proof = fri_prove_evals(evals, 2, 16, &mut tp);
+
+        let mut tv = Transcript::new(b"v0.6-spike");
+        assert!(!fri_verify_evals(n, 2, 16, &proof, &mut tv));
     }
 }

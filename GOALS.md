@@ -52,20 +52,27 @@ Higher-level intent than `README.md`. Sequenced milestones to a working PLONK-st
   tampered layer value rejected; tampered final value rejected; mismatched
   query count rejected
 
-## v0.6 - adversarial soundness + real hash
+## v0.6 - eval-based API + adversarial soundness ✦ **shipped**
 
-- Adversarial-prover tests: construct evaluations that are not a low-degree
-  polynomial; verifier rejects with high probability over the queries
+- `fri_prove_evals(evals, final_layer_size, n_queries, transcript)` for the
+  prover-takes-evaluations API (the meaningful low-degree-test shape)
+- `fri_verify_evals` adds the constant-final-layer check that distinguishes
+  low-degree evaluations from arbitrary ones
+- Tests: low-degree poly accepted; random evals rejected at n=16 and n=32;
+  constant function accepted; almost-low-degree-with-one-spike rejected
+
+## v0.7 - real hash + recursion-friendly transcript
+
 - Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
+- Domain-separated transcript with rolled-out absorb/squeeze API
 
-## v0.7 - KZG variant
+## v0.8 - KZG variant
 
-- Swap toy hash for BLAKE3 (off-chain) or Poseidon (recursion-friendly)
-- Optional KZG track: BLS12-381 scalar + base field (importing a curve crate
-  is acceptable here; `halo2curves` or hand-rolled if energy permits),
-  pairing, KZG commit / open / verify
+- BLS12-381 scalar + base field (importing a curve crate is acceptable
+  here; `halo2curves` or hand-rolled if energy permits)
+- Pairing, KZG commit / open / verify
 
-## v0.6 - PLONK arithmetization
+## v0.9 - PLONK arithmetization
 
 - Constraint system: gate equations, copy constraints, permutation argument
 - Witness assignment
