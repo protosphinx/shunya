@@ -8,6 +8,8 @@ A from-scratch zero-knowledge proving system in Rust. No `arkworks`, no `halo2`,
 
 ## Why from scratch
 
+![tests](https://img.shields.io/badge/tests-64%20passing-yellowgreen)
+
 The existing ZK stacks are excellent and you should use them in production. This repo is the opposite of production - it exists because *building it ourselves is the point*. Every layer is a chance to understand a piece of cryptography that is otherwise a black box behind 30k lines of someone else's macros.
 
 ## Roadmap
