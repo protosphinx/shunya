@@ -55,10 +55,7 @@ impl MerkleTree {
             layer_start += layer_len;
             layer_len /= 2;
         }
-        Self {
-            n_leaves: n,
-            nodes,
-        }
+        Self { n_leaves: n, nodes }
     }
 
     pub fn n_leaves(&self) -> usize {
@@ -100,12 +97,7 @@ pub struct MerkleOpening {
 
 /// Verify that `value` is the leaf at index `idx` in a tree with the given
 /// `root`, using `opening.siblings` to recompute the path.
-pub fn merkle_verify(
-    root: u64,
-    idx: usize,
-    value: Goldilocks,
-    opening: &MerkleOpening,
-) -> bool {
+pub fn merkle_verify(root: u64, idx: usize, value: Goldilocks, opening: &MerkleOpening) -> bool {
     let mut current = hash_one(value.raw());
     let mut i = idx;
     for sibling in &opening.siblings {

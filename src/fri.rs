@@ -67,11 +67,7 @@ use crate::transcript::Transcript;
 /// `n` must be at least 2 and a power of two. Returns the `n / 2`
 /// evaluations of the folded polynomial on the squared domain
 /// `{ omega^0, omega^2, omega^4, ..., omega^(n-2) }`.
-pub fn fri_fold(
-    evals: &[Goldilocks],
-    alpha: Goldilocks,
-    omega: Goldilocks,
-) -> Vec<Goldilocks> {
+pub fn fri_fold(evals: &[Goldilocks], alpha: Goldilocks, omega: Goldilocks) -> Vec<Goldilocks> {
     let n = evals.len();
     assert!(
         n >= 2 && n.is_power_of_two(),
@@ -246,8 +242,7 @@ pub fn fri_verify(
         let q = (q_seed as usize) % (n / 2);
 
         let mut q_at = q;
-        let mut current_omega =
-            TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
+        let mut current_omega = TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
         let mut current_size = n;
 
         for (layer_idx, layer) in query.layers.iter().enumerate() {
@@ -424,8 +419,7 @@ pub fn fri_verify_evals(
         let q = (q_seed as usize) % (n / 2);
 
         let mut q_at = q;
-        let mut current_omega =
-            TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
+        let mut current_omega = TWO_ADIC_GENERATOR.pow(1u64 << (TWO_ADICITY - n.trailing_zeros()));
         let mut current_size = n;
 
         for (layer_idx, layer) in query.layers.iter().enumerate() {
@@ -636,10 +630,8 @@ mod tests {
         let mut tp = Transcript::new(b"tamper-merkle");
         let mut proof = fri_prove(&coeffs, 4, &mut tp);
 
-        proof.queries[0].layers[0].opening_pos.siblings[0] = proof.queries[0].layers[0]
-            .opening_pos
-            .siblings[0]
-            .wrapping_add(1);
+        proof.queries[0].layers[0].opening_pos.siblings[0] =
+            proof.queries[0].layers[0].opening_pos.siblings[0].wrapping_add(1);
 
         let mut tv = Transcript::new(b"tamper-merkle");
         assert!(!fri_verify(4, 4, &proof, &mut tv));
@@ -651,7 +643,7 @@ mod tests {
         let mut tp = Transcript::new(b"tamper-value");
         let mut proof = fri_prove(&coeffs, 4, &mut tp);
 
-        proof.queries[0].layers[0].at_pos = proof.queries[0].layers[0].at_pos + g(1);
+        proof.queries[0].layers[0].at_pos += g(1);
 
         let mut tv = Transcript::new(b"tamper-value");
         assert!(!fri_verify(4, 4, &proof, &mut tv));
@@ -663,7 +655,7 @@ mod tests {
         let mut tp = Transcript::new(b"final-value");
         let mut proof = fri_prove(&coeffs, 4, &mut tp);
 
-        proof.final_value = proof.final_value + g(1);
+        proof.final_value += g(1);
 
         let mut tv = Transcript::new(b"final-value");
         assert!(!fri_verify(4, 4, &proof, &mut tv));
@@ -671,7 +663,7 @@ mod tests {
 
     #[test]
     fn fri_rejects_wrong_param_lengths() {
-        let coeffs: Vec<_> = (0..4u64).map(|i| g(i)).collect();
+        let coeffs: Vec<_> = (0..4u64).map(g).collect();
         let mut tp = Transcript::new(b"wrong-params");
         let proof = fri_prove(&coeffs, 3, &mut tp);
 
@@ -758,7 +750,7 @@ mod tests {
         let n = 16;
         let mut evals = evals_of_low_degree_poly(coeffs, n);
         // Inject a "spike" at one position - destroys low-degree structure.
-        evals[5] = evals[5] + g(99);
+        evals[5] += g(99);
 
         let mut tp = Transcript::new(b"v0.6-spike");
         let proof = fri_prove_evals(evals, 2, 16, &mut tp);

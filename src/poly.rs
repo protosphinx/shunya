@@ -63,10 +63,7 @@ impl<F: Field> Polynomial<F> {
     /// Index of the highest non-zero coefficient. Returns `0` for the zero
     /// polynomial as a convenience (caller should treat that as a special case).
     pub fn degree(&self) -> usize {
-        self.coeffs
-            .iter()
-            .rposition(|c| *c != F::ZERO)
-            .unwrap_or(0)
+        self.coeffs.iter().rposition(|c| *c != F::ZERO).unwrap_or(0)
     }
 
     /// Schoolbook multiplication: `O(n · m)`. Reference for testing the NTT
@@ -191,8 +188,7 @@ mod tests {
     fn ntt_then_intt_round_trips() {
         for log_n in 1..=10u32 {
             let n = 1usize << log_n;
-            let mut a: Vec<Goldilocks> =
-                (0..n).map(|i| Goldilocks::new(i as u64 + 1)).collect();
+            let mut a: Vec<Goldilocks> = (0..n).map(|i| Goldilocks::new(i as u64 + 1)).collect();
             let original = a.clone();
             ntt(&mut a);
             intt(&mut a);

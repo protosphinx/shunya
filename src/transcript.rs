@@ -26,9 +26,7 @@ pub struct Transcript {
 
 impl Transcript {
     pub fn new(domain_separator: &[u8]) -> Self {
-        let mut s = Self {
-            state: FNV_OFFSET,
-        };
+        let mut s = Self { state: FNV_OFFSET };
         for &b in domain_separator {
             s.absorb_byte(b);
         }
